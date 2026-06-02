@@ -1,6 +1,6 @@
 import fitz  # PyMuPDF
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Generator
 
 
 def load_pdf(file_bytes: bytes, filename: str) -> List[Dict]:
@@ -24,9 +24,8 @@ def chunk_text(
     pages: List[Dict],
     chunk_size: int = 512,
     chunk_overlap: int = 64,
-) -> List[Dict]:
-    """Split page text into overlapping chunks."""
-    chunks = []
+) -> Generator[Dict, None, None]:
+    """Split page text into overlapping chunks, yielding one at a time."""
     chunk_id = 0
 
     for page_data in pages:
@@ -40,14 +39,12 @@ def chunk_text(
             chunk_text = " ".join(chunk_words).strip()
 
             if chunk_text:
-                chunks.append({
+                yield {
                     "chunk_id": f"{page_data['source']}_p{page_data['page']}_c{chunk_id}",
                     "text": chunk_text,
                     "page": page_data["page"],
                     "source": page_data["source"],
-                })
+                }
                 chunk_id += 1
 
             i += step
-
-    return chunks
