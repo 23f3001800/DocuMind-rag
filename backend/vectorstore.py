@@ -1,6 +1,6 @@
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from typing import List, Dict
+from typing import List, Dict, Iterable
 from config import settings
 from embeddings import embed_texts
 
@@ -18,7 +18,7 @@ def get_client() -> chromadb.Client:
     return _client
 
 
-def add_chunks(chunks: List[Dict], collection_name: str = "default") -> int:
+def add_chunks(chunks: Iterable[Dict], collection_name: str = "default") -> int:
     """Embed and store chunks in ChromaDB collection."""
     client = get_client()
     collection = client.get_or_create_collection(
@@ -26,25 +26,38 @@ def add_chunks(chunks: List[Dict], collection_name: str = "default") -> int:
         metadata={"hnsw:space": "cosine"},
     )
 
-    texts = [c["text"] for c in chunks]
-    ids = [c["chunk_id"] for c in chunks]
+    batch_size = 100
+    batch = []
+    total_added = 0
+
+    for chunk in chunks:
+        batch.append(chunk)
+        if len(batch) >= batch_size:
+            _process_batch(collection, batch)
+            total_added += len(batch)
+            batch = []
+
+    if batch:
+        _process_batch(collection, batch)
+        total_added += len(batch)
+
+    return total_added
+
+def _process_batch(collection, batch: List[Dict]):
+    texts = [c["text"] for c in batch]
+    ids = [c["chunk_id"] for c in batch]
     metadatas = [
         {"source": c["source"], "page": c["page"]}
-        for c in chunks
+        for c in batch
     ]
     embeddings = embed_texts(texts)
 
-    # Upsert in batches of 100
-    batch_size = 100
-    for i in range(0, len(chunks), batch_size):
-        collection.upsert(
-            ids=ids[i: i + batch_size],
-            documents=texts[i: i + batch_size],
-            embeddings=embeddings[i: i + batch_size],
-            metadatas=metadatas[i: i + batch_size],
-        )
-
-    return len(chunks)
+    collection.upsert(
+        ids=ids,
+        documents=texts,
+        embeddings=embeddings,
+        metadatas=metadatas,
+    )
 
 
 def query_dense(
